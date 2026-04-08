@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>외계 행성 시뮬레이션</title>
+  <style>
+    :root {
+      --bg: #050816;
+      --panel: #11162a;
+      --text: #f2f7ff;
+      --muted: #9eb0cf;
+      --accent: #5ad2ff;
+      --accent-2: #8dffbf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: radial-gradient(circle at 20% 10%, #0c1330 0%, var(--bg) 45%, #02030a 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+    .app {
+      width: min(980px, 96vw);
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 14px;
+    }
+    canvas {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      background: #03050f;
+      border: 1px solid #263357;
+      box-shadow: 0 0 24px rgba(90, 210, 255, 0.14);
+      touch-action: manipulation;
+    }
+    .canvasWrap { position: relative; width: 100%; }
+    .tip {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      font-size: 12px;
+      color: rgba(226, 238, 255, 0.9);
+      background: rgba(10, 16, 36, 0.65);
+      border: 1px solid rgba(38, 51, 87, 0.8);
+      border-radius: 12px;
+      padding: 8px 10px;
+      backdrop-filter: blur(6px);
+      max-width: calc(100% - 24px);
+      pointer-events: none;
+    }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 90%, black 10%);
+      border: 1px solid #263357;
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.2px;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .control { display: grid; gap: 6px; }
+    .control label {
+      font-size: 13px;
+      color: #d9e6ff;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+      min-height: 34px;
+    }
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid #2b3d66;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #0b1124;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 10px 12px;
+      font-weight: 600;
+      background: #1c2747;
+      color: var(--text);
+      cursor: pointer;
+    }
+    button:hover { background: #24355f; }
+    .accent { background: #0b5c79; }
+    .accent:hover { background: #11749a; }
+    .stats {
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid #253355;
+      padding-top: 10px;
+      line-height: 1.6;
+    }
+    .toggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+    }
+    .toggleItem {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #d9e6ff;
+      font-size: 13px;
+      user-select: none;
+    }
+    .toggleItem input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      body { padding: 10px; align-items: start; }
+      .app { width: 100%; gap: 10px; }
+      .panel { padding: 12px; gap: 12px; }
+      h1 { font-size: 17px; }
+      p { font-size: 12px; }
+      .control label { font-size: 12px; }
+      input[type="number"] { font-size: 16px; } /* prevent iOS zoom on focus */
+      .btns { display: grid; grid-template-columns: 1fr 1fr; }
+      button { width: 100%; min-height: 40px; }
+      .stats { font-size: 11px; }
+      .tip { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="canvasWrap">
+      <canvas id="simCanvas" width="900" height="900"></canvas>
+      <div class="tip" id="tip">모바일: 캔버스 드래그로 반지름/이심률 조절</div>
+    </div>
+    <aside class="panel">
+      <h1>외계 행성 시뮬레이션</h1>
+      <p>중심 별 주위를 도는 외계 행성을 단순화한 모델입니다.</p>
+
+      <div class="control">
+        <label>궤도 반지름 <span id="radiusVal">250</span></label>
+        <input id="radius" type="range" min="120" max="360" value="250" />
+      </div>
+      <div class="control">
+        <label>궤도 속도 <span id="speedVal">0.80</span></label>
+        <input id="speed" type="range" min="10" max="180" value="80" />
+      </div>
+      <div class="control">
+        <label>행성 크기 <span id="sizeVal">13</span></label>
+        <input id="size" type="range" min="6" max="28" value="13" />
+      </div>
+      <div class="control">
+        <label>꼬리(트레일) 길이 <span id="trailVal">180</span></label>
+        <input id="trail" type="range" min="20" max="400" value="180" />
+      </div>
+      <div class="control">
+        <label>이심률 <span id="eccVal">0.20</span></label>
+        <input id="ecc" type="number" min="0" max="0.85" step="0.01" value="0.20" />
+      </div>
+      <div class="control">
+        <label>행성 질량비(별=1) <span id="massVal">0.30</span></label>
+        <input id="mass" type="range" min="5" max="200" value="30" />
+      </div>
+
+      <div class="control">
+        <label>행성 개수 <span id="planetCountVal">2</span></label>
+        <input id="planetCount" type="number" min="1" max="4" step="1" value="2" />
+      </div>
+      <div class="control">
+        <label>위상 간격(도) <span id="phaseVal">120</span></label>
+        <input id="phaseSpread" type="number" min="0" max="360" step="1" value="120" />
+      </div>
+      <div class="control">
+        <label>근일점 각도(ω, 도) <span id="omegaVal">0</span></label>
+        <input id="omega" type="number" min="0" max="360" step="1" value="0" />
+      </div>
+
+      <div class="control">
+        <label>표시 토글</label>
+        <div class="toggles">
+          <label class="toggleItem"><input id="showOrbits" type="checkbox" checked /> 궤도</label>
+          <label class="toggleItem"><input id="showTrail" type="checkbox" checked /> 트레일</label>
+          <label class="toggleItem"><input id="showStars" type="checkbox" checked /> 별 배경</label>
+          <label class="toggleItem"><input id="showMarkers" type="checkbox" checked /> 마커</label>
+          <label class="toggleItem"><input id="showGrid" type="checkbox" /> 격자</label>
+          <label class="toggleItem"><input id="lockTrail" type="checkbox" /> 트레일 고정</label>
+        </div>
+      </div>
+
+      <div class="control">
+        <label>궤도 해상도(점) <span id="orbitResVal">220</span></label>
+        <input id="orbitSteps" type="number" min="60" max="500" step="10" value="220" />
+      </div>
+
+      <div class="btns">
+        <button class="accent" id="toggleBtn">일시정지</button>
+        <button id="resetBtn">초기화</button>
+      </div>
+
+      <div class="stats" id="stats"></div>
+    </aside>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("simCanvas");
+    const ctx = canvas.getContext("2d");
+    const center = { x: 0, y: 0 };
+
+    const controls = {
+      radius: document.getElementById("radius"),
+      speed: document.getElementById("speed"),
+      size: document.getElementById("size"),
+      trail: document.getElementById("trail"),
+      ecc: document.getElementById("ecc"),
+      mass: document.getElementById("mass"),
+      planetCount: document.getElementById("planetCount"),
+      phaseSpread: document.getElementById("phaseSpread"),
+      omega: document.getElementById("omega"),
+      showOrbits: document.getElementById("showOrbits"),
+      showTrail: document.getElementById("showTrail"),
+      showStars: document.getElementById("showStars"),
+      showMarkers: document.getElementById("showMarkers"),
+      showGrid: document.getElementById("showGrid"),
+      lockTrail: document.getElementById("lockTrail"),
+      orbitSteps: document.getElementById("orbitSteps"),
+      radiusVal: document.getElementById("radiusVal"),
+      speedVal: document.getElementById("speedVal"),
+      sizeVal: document.getElementById("sizeVal"),
+      trailVal: document.getElementById("trailVal"),
+      eccVal: document.getElementById("eccVal"),
+      massVal: document.getElementById("massVal"),
+      planetCountVal: document.getElementById("planetCountVal"),
+      phaseVal: document.getElementById("phaseVal"),
+      omegaVal: document.getElementById("omegaVal"),
+      orbitResVal: document.getElementById("orbitResVal"),
+      toggleBtn: document.getElementById("toggleBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      stats: document.getElementById("stats")
+    };
+
+    const state = {
+      running: true,
+      frame: 0,
+      M: 0,
+      trails: [],
+      orbitCacheKey: "",
+      orbitPaths: []
+    };
+
+    let stars = [];
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const cssSize = Math.max(280, Math.min(rect.width || 900, 900));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(cssSize * dpr);
+      canvas.height = Math.round(cssSize * dpr);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      center.x = cssSize / 2;
+      center.y = cssSize / 2;
+
+      // Regenerate a simple deterministic star field in CSS pixel coordinates.
+      stars = [];
+      const size = cssSize * 2;
+      for (let i = 0; i < 120; i++) {
+        const x = (i * 137) % size;
+        const y = (i * 89) % size;
+        const r = (i % 3) + 0.6;
+        const a = 0.16 + (i % 7) / 30;
+        stars.push({ x, y, r, a });
+      }
+    }
+
+    function readValues() {
+      const planetCount = Math.min(4, Math.max(1, Math.round(Number(controls.planetCount.value))));
+      const ecc = Number(controls.ecc.value);
+      const eccentricity = Math.min(0.85, Math.max(0, Number.isFinite(ecc) ? ecc : 0));
+
+      return {
+        radius: Number(controls.radius.value),
+        speed: Number(controls.speed.value) / 100,
+        planetSize: Number(controls.size.value),
+        trailMax: Number(controls.trail.value),
+        eccentricity,
+        planetMassRatio: Number(controls.mass.value) / 100,
+        planetCount,
+        phaseSpreadDeg: Number(controls.phaseSpread.value),
+        omegaDeg: Number(controls.omega.value),
+        showOrbits: controls.showOrbits.checked,
+        showTrail: controls.showTrail.checked,
+        showStars: controls.showStars.checked,
+        showMarkers: controls.showMarkers.checked,
+        showGrid: controls.showGrid.checked,
+        lockTrail: controls.lockTrail.checked,
+        orbitSteps: Math.min(500, Math.max(60, Math.round(Number(controls.orbitSteps.value))))
+      };
+    }
+
+    function syncLabels(v) {
+      controls.radiusVal.textContent = v.radius.toFixed(0);
+      controls.speedVal.textContent = v.speed.toFixed(2);
+      controls.sizeVal.textContent = v.planetSize.toFixed(0);
+      controls.trailVal.textContent = v.trailMax.toFixed(0);
+      controls.eccVal.textContent = v.eccentricity.toFixed(2);
+      controls.massVal.textContent = v.planetMassRatio.toFixed(2);
+      controls.planetCountVal.textContent = String(v.planetCount);
+      controls.phaseVal.textContent = v.phaseSpreadDeg.toFixed(0);
+      controls.omegaVal.textContent = v.omegaDeg.toFixed(0);
+      controls.orbitResVal.textContent = String(v.orbitSteps);
+    }
+
+    function drawBackground(v) {
+      const size = center.x * 2;
+
+      // Clear frame.
+      ctx.fillStyle = "#03050f";
+      ctx.fillRect(0, 0, size, size);
+
+      // Background stars (cached in resizeCanvas()).
+      if (!v || v.showStars) {
+        for (let i = 0; i < stars.length; i++) {
+          const s = stars[i];
+          ctx.globalAlpha = s.a;
+          ctx.fillStyle = "#dff2ff";
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // Optional grid.
+      if (v && v.showGrid) {
+        ctx.strokeStyle = "rgba(114, 155, 255, 0.10)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const step = Math.max(60, Math.round(size / 10));
+        for (let x = step; x < size; x += step) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, size);
+        }
+        for (let y = step; y < size; y += step) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(size, y);
+        }
+        ctx.stroke();
+
+        // Axes.
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.beginPath();
+        ctx.moveTo(center.x, 0);
+        ctx.lineTo(center.x, size);
+        ctx.moveTo(0, center.y);
+        ctx.lineTo(size, center.y);
+        ctx.stroke();
+      }
+    }
+
+    function drawStar(x, y, size) {
+      const g = ctx.createRadialGradient(x, y, 10, x, y, size * 1.75);
+      g.addColorStop(0, "#fffbd2");
+      g.addColorStop(0.55, "#ffd85e");
+      g.addColorStop(1, "#f08a26");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawBarycenter() {
+      ctx.strokeStyle = "rgba(255, 70, 70, 0.95)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(center.x - 6, center.y - 6);
+      ctx.lineTo(center.x + 6, center.y + 6);
+      ctx.moveTo(center.x - 6, center.y + 6);
+      ctx.lineTo(center.x + 6, center.y - 6);
+      ctx.stroke();
+    }
+
+    const planetPaint = [
+      { a: "#d3ffe8", b: "#4be3b2", c: "#1f8b89" },
+      { a: "#e6dcff", b: "#b68bff", c: "#6c3cff" },
+      { a: "#fff0c2", b: "#ffd85e", c: "#b86a00" },
+      { a: "#d9fbff", b: "#59c7ff", c: "#155f8f" }
+    ];
+
+    let orbitCache = { key: "", steps: 0, paths: [] };
+
+    function clamp(x, a, b) {
+      return Math.max(a, Math.min(b, x));
+    }
+
+    function degToRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    // Solve Kepler's equation M = E - e sin(E) for eccentric anomaly E.
+    function solveKepler(M, e) {
+      if (e < 1e-8) return M;
+      // Normalize M to keep Newton iterations stable.
+      const twoPi = Math.PI * 2;
+      let m = M % twoPi;
+      if (m < -Math.PI) m += twoPi;
+      if (m > Math.PI) m -= twoPi;
+
+      let E = m;
+      // A couple of Newton steps are enough for visual simulation.
+      for (let i = 0; i < 8; i++) {
+        const f = E - e * Math.sin(E) - m;
+        const fp = 1 - e * Math.cos(E);
+        E -= f / fp;
+      }
+      return E;
+    }
+
+    function trueAnomalyFromE(E, e) {
+      const s = Math.sin(E / 2);
+      const c = Math.cos(E / 2);
+      const denom = Math.sqrt(1 - e);
+      const numer = Math.sqrt(1 + e);
+      // θ = 2 atan2( sqrt(1+e) sin(E/2), sqrt(1-e) cos(E/2) )
+      return 2 * Math.atan2(numer * s, denom * c);
+    }
+
+    function ensureOrbitCache(v) {
+      const phaseRad = degToRad(v.phaseSpreadDeg);
+      const omegaRad = degToRad(v.omegaDeg);
+      const planetCount = v.planetCount;
+      const steps = v.orbitSteps;
+
+      const key = [
+        v.radius,
+        v.eccentricity,
+        v.planetMassRatio,
+        planetCount,
+        v.phaseSpreadDeg,
+        v.omegaDeg,
+        steps
+      ].join("|");
+
+      if (orbitCache.key === key && orbitCache.steps === steps && orbitCache.paths.length === planetCount) {
+        return;
+      }
+
+      orbitCache = { key, steps, paths: new Array(planetCount).fill(null).map(() => []) };
+
+      const mStar = 1;
+      const mPlanet = v.planetMassRatio;
+      const denom = mStar + mPlanet * planetCount;
+      const a = v.radius;
+      const e = v.eccentricity;
+
+      // Precompute phase offsets in mean anomaly.
+      const offsets = new Array(planetCount);
+      for (let i = 0; i < planetCount; i++) offsets[i] = i * phaseRad;
+
+      // Temp arrays for per-sample r_rel vectors.
+      const relX = new Array(planetCount);
+      const relY = new Array(planetCount);
+
+      for (let s = 0; s <= steps; s++) {
+        const Mbase = (Math.PI * 2 * s) / steps;
+        let sumX = 0;
+        let sumY = 0;
+
+        // Compute star->planet relative vectors (in plane units).
+        for (let i = 0; i < planetCount; i++) {
+          const Mi = Mbase + offsets[i];
+          const E = solveKepler(Mi, e);
+          const theta = trueAnomalyFromE(E, e);
+          const relR = a * (1 - e * Math.cos(E)); // r = a(1 - e cos E)
+          const phi = theta + omegaRad;
+
+          const xRel = relR * Math.cos(phi);
+          const yRel = relR * Math.sin(phi);
+          relX[i] = xRel;
+          relY[i] = yRel;
+          sumX += xRel;
+          sumY += yRel;
+        }
+
+        // Barycenter is fixed at screen center: star position offsets cancel planets' mass-weighted vectors.
+        const sx = center.x - (mPlanet * sumX) / denom;
+        const sy = center.y - (mPlanet * sumY) / denom;
+
+        for (let i = 0; i < planetCount; i++) {
+          const px = sx + relX[i];
+          const py = sy + relY[i];
+          orbitCache.paths[i].push({ x: px, y: py });
+        }
+      }
+    }
+
+    function drawOrbits(v) {
+      if (!v.showOrbits) return;
+      ensureOrbitCache(v);
+
+      const planetCount = v.planetCount;
+      for (let i = 0; i < planetCount; i++) {
+        const paint = planetPaint[i % planetPaint.length];
+        ctx.strokeStyle = "rgba(144, 185, 255, 0.30)";
+        ctx.lineWidth = 1.2;
+
+        ctx.beginPath();
+        const pts = orbitCache.paths[i];
+        for (let j = 0; j < pts.length; j++) {
+          const p = pts[j];
+          if (j === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    const trailPaint = [
+      { r: 141, g: 255, b: 191 },
+      { r: 200, g: 160, b: 255 },
+      { r: 255, g: 220, b: 120 },
+      { r: 170, g: 220, b: 255 }
+    ];
+
+    function drawTrail(v) {
+      if (!v.showTrail) return;
+
+      for (let i = 0; i < state.trails.length; i++) {
+        const trail = state.trails[i];
+        if (!trail.length) continue;
+
+        const base = trailPaint[i % trailPaint.length];
+        const n = trail.length;
+
+        for (let j = 0; j < n; j++) {
+          const p = trail[j];
+          const alpha = (j + 1) / n;
+          ctx.fillStyle = `rgba(${base.r}, ${base.g}, ${base.b}, ${alpha * 0.45})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    function drawPlanet(x, y, size, colorIndex) {
+      const paint = planetPaint[colorIndex % planetPaint.length];
+      const g = ctx.createRadialGradient(
+        x - size * 0.3,
+        y - size * 0.3,
+        2,
+        x,
+        y,
+        size * 1.2
+      );
+      g.addColorStop(0, paint.a);
+      g.addColorStop(0.6, paint.b);
+      g.addColorStop(1, paint.c);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function animate() {
+      const v = readValues();
+      syncLabels(v);
+
+      if (state.running) {
+        state.M += 0.0045 * v.speed;
+        state.frame += 1;
+      }
+
+      const planetCount = v.planetCount;
+      if (state.trails.length !== planetCount) {
+        state.trails = new Array(planetCount).fill(null).map(() => []);
+      }
+
+      const e = v.eccentricity;
+      const omegaRad = degToRad(v.omegaDeg);
+      const phaseRad = degToRad(v.phaseSpreadDeg);
+      const a = v.radius;
+
+      const mStar = 1;
+      const mPlanet = v.planetMassRatio; // each planet mass ratio
+      const denom = mStar + mPlanet * planetCount;
+
+      let sumX = 0;
+      let sumY = 0;
+      const rel = new Array(planetCount);
+
+      for (let i = 0; i < planetCount; i++) {
+        const Mi = state.M + i * phaseRad;
+        const E = solveKepler(Mi, e);
+        const theta = trueAnomalyFromE(E, e);
+        const relR = a * (1 - e * Math.cos(E)); // r = a(1 - e cosE)
+        const phi = theta + omegaRad;
+
+        const xRel = relR * Math.cos(phi);
+        const yRel = relR * Math.sin(phi);
+        rel[i] = { x: xRel, y: yRel };
+
+        sumX += xRel;
+        sumY += yRel;
+      }
+
+      // Star position is determined by barycenter condition: m_star*r_star + sum(m_i*r_i)=0
+      const starX = center.x - (mPlanet * sumX) / denom;
+      const starY = center.y - (mPlanet * sumY) / denom;
+
+      const planets = new Array(planetCount);
+      for (let i = 0; i < planetCount; i++) {
+        const px = starX + rel[i].x;
+        const py = starY + rel[i].y;
+        planets[i] = { x: px, y: py };
+
+        if (v.showTrail && !v.lockTrail && state.running) {
+          const rDot = Math.max(1.5, v.planetSize * 0.36);
+          state.trails[i].push({ x: px, y: py, r: rDot });
+          while (state.trails[i].length > v.trailMax) state.trails[i].shift();
+        }
+      }
+
+      drawBackground(v);
+      if (v.showOrbits) drawOrbits(v);
+      drawBarycenter();
+
+      if (v.showMarkers) {
+        const periR = a * (1 - e);
+        const apoR = a * (1 + e);
+        const dx = Math.cos(omegaRad);
+        const dy = Math.sin(omegaRad);
+
+        const periX = starX + periR * dx;
+        const periY = starY + periR * dy;
+        const apoX = starX - apoR * dx; // opposite direction
+        const apoY = starY - apoR * dy;
+
+        ctx.strokeStyle = "rgba(255, 245, 140, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(periX, periY, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255, 245, 140, 0.35)";
+        ctx.beginPath();
+        ctx.arc(periX, periY, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 170, 120, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(apoX, apoY, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255, 170, 120, 0.35)";
+        ctx.beginPath();
+        ctx.arc(apoX, apoY, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      drawStar(starX, starY, 30);
+      drawTrail(v);
+
+      for (let i = 0; i < planetCount; i++) {
+        drawPlanet(planets[i].x, planets[i].y, v.planetSize, i);
+      }
+
+      const orbitalDays = (420 / Math.max(0.2, v.speed)).toFixed(1);
+      const starBaryDist = Math.hypot(starX - center.x, starY - center.y).toFixed(1);
+      controls.stats.innerHTML =
+        `행성 수: ${planetCount}<br>` +
+        `거리(a): ${v.radius} (가상 단위)<br>` +
+        `속도 계수: ${v.speed.toFixed(2)}x<br>` +
+        `이심률(e): ${v.eccentricity.toFixed(2)}<br>` +
+        `근일점 각도(ω): ${v.omegaDeg.toFixed(0)}°<br>` +
+        `위상 간격: ${v.phaseSpreadDeg.toFixed(0)}°<br>` +
+        `질량비(각 행성/별): ${v.planetMassRatio.toFixed(2)}<br>` +
+        `별-질량중심 거리: ${starBaryDist}<br>` +
+        `예상 공전 주기: ${orbitalDays} 일`;
+
+      requestAnimationFrame(animate);
+    }
+
+    controls.toggleBtn.addEventListener("click", () => {
+      state.running = !state.running;
+      controls.toggleBtn.textContent = state.running ? "일시정지" : "재생";
+    });
+
+    controls.resetBtn.addEventListener("click", () => {
+      state.M = 0;
+      state.frame = 0;
+      state.trails = [];
+      orbitCache.key = "";
+      orbitCache.paths = [];
+    });
+
+    ["radius", "speed", "size", "trail", "mass"].forEach((k) => {
+      controls[k].addEventListener("input", () => syncLabels(readValues()));
+    });
+
+    controls.ecc.addEventListener("input", () => {
+      syncLabels(readValues());
+    });
+
+    controls.ecc.addEventListener("change", () => {
+      const raw = Number(controls.ecc.value);
+      const clamped = Math.min(0.85, Math.max(0, Number.isFinite(raw) ? raw : 0));
+      controls.ecc.value = clamped.toFixed(2);
+      syncLabels(readValues());
+    });
+
+    // Mobile-friendly gesture controls:
+    // - Drag horizontally: radius
+    // - Drag vertically: eccentricity
+    // - Tap (no drag): toggle pause/play
+    (function setupGestures() {
+      let dragging = false;
+      let moved = false;
+      let startX = 0;
+      let startY = 0;
+      let baseRadius = 0;
+      let baseEcc = 0;
+      const threshold = 6; // px
+
+      canvas.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+
+        dragging = true;
+        moved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        baseRadius = Number(controls.radius.value);
+        baseEcc = Number(controls.ecc.value);
+
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (!moved && Math.abs(dx) + Math.abs(dy) > threshold) moved = true;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+          const newR = clamp(Math.round(baseRadius + dx * 0.12), 120, 360);
+          controls.radius.value = String(newR);
+        } else {
+          const newE = clamp(baseEcc - dy * 0.004, 0, 0.85);
+          controls.ecc.value = newE.toFixed(2);
+        }
+      });
+
+      const end = (e) => {
+        if (!dragging) return;
+        dragging = false;
+
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+
+        if (!moved) {
+          state.running = !state.running;
+          controls.toggleBtn.textContent = state.running ? "일시정지" : "재생";
+        }
+
+        syncLabels(readValues());
+      };
+
+      canvas.addEventListener("pointerup", end);
+      canvas.addEventListener("pointercancel", end);
+    })();
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    animate();
+  </script>
+</body>
+</html>
